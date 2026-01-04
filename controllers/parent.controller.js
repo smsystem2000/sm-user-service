@@ -1,0 +1,354 @@
+const { getSchoolDbConnection } = require("../configs/db");
+const School = require("../models/schools.model");
+const parentSchema = require("../models/parent.model");
+const studentSchema = require("../models/student.model");
+
+/**
+ * Get Parent model for a specific school database
+ */
+const getParentModel = (schoolDbName) => {
+    const schoolDb = getSchoolDbConnection(schoolDbName);
+    return schoolDb.model("Parent", parentSchema);
+};
+
+/**
+ * Get Student model for a specific school database
+ */
+const getStudentModel = (schoolDbName) => {
+    const schoolDb = getSchoolDbConnection(schoolDbName);
+    return schoolDb.model("Student", studentSchema);
+};
+
+/**
+ * Helper function to generate parentId
+ * Format: PRT + 5 digit number (PRT00001, PRT00002, ...)
+ */
+const generateParentId = async (Parent) => {
+    const lastParent = await Parent.findOne().sort({ parentId: -1 });
+
+    if (!lastParent || !lastParent.parentId) {
+        return "PRT00001";
+    }
+
+    const lastIdNumber = parseInt(lastParent.parentId.replace("PRT", ""), 10);
+    const newIdNumber = lastIdNumber + 1;
+
+    return `PRT${String(newIdNumber).padStart(5, "0")}`;
+};
+
+/**
+ * Get school database name by schoolId
+ */
+const getSchoolDbName = async (schoolId) => {
+    const school = await School.findOne({ schoolId });
+    if (!school) {
+        return null;
+    }
+    return school.schoolDbName;
+};
+
+// Create a new parent
+const createParent = async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+        const {
+            firstName,
+            lastName,
+            email,
+            password,
+            phone,
+            studentIds,
+            relationship,
+            occupation,
+            address,
+            status,
+        } = req.body;
+
+        // Validate required fields
+        if (!firstName || !lastName || !email || !password || !phone || !relationship) {
+            return res.status(400).json({
+                success: false,
+                message: "firstName, lastName, email, password, phone, and relationship are required",
+            });
+        }
+
+        // Get school database name
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Parent = getParentModel(schoolDbName);
+
+        // Check if email already exists in this school
+        const existingParent = await Parent.findOne({ email });
+        if (existingParent) {
+            return res.status(400).json({
+                success: false,
+                message: "A parent with this email already exists in this school",
+            });
+        }
+
+        // Generate parentId
+        const parentId = await generateParentId(Parent);
+
+        const newParent = new Parent({
+            parentId,
+            schoolId,
+            firstName,
+            lastName,
+            email,
+            password, // Plain text for now
+            phone,
+            studentIds: studentIds || [],
+            relationship,
+            occupation,
+            address,
+            status: status || "active",
+        });
+
+        const savedParent = await newParent.save();
+
+        // Update students' parentId (bidirectional)
+        if (studentIds && studentIds.length > 0) {
+            try {
+                const Student = getStudentModel(schoolDbName);
+                await Student.updateMany(
+                    { studentId: { $in: studentIds } },
+                    { parentId: parentId }
+                );
+            } catch (studentError) {
+                console.warn("Could not update students' parentId:", studentError.message);
+            }
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: "Parent created successfully",
+            data: {
+                parentId: savedParent.parentId,
+                schoolId: savedParent.schoolId,
+                firstName: savedParent.firstName,
+                lastName: savedParent.lastName,
+                email: savedParent.email,
+                phone: savedParent.phone,
+                studentIds: savedParent.studentIds,
+                relationship: savedParent.relationship,
+                status: savedParent.status,
+            },
+        });
+    } catch (error) {
+        console.error("Error creating parent:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error creating parent",
+            error: error.message,
+        });
+    }
+};
+
+// Get parent by parentId
+const getParentById = async (req, res) => {
+    try {
+        const { schoolId, id: parentId } = req.params;
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Parent = getParentModel(schoolDbName);
+        const parent = await Parent.findOne({ parentId }).select("-password");
+
+        if (!parent) {
+            return res.status(404).json({
+                success: false,
+                message: "Parent not found",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Parent fetched successfully",
+            data: parent,
+        });
+    } catch (error) {
+        console.error("Error fetching parent:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching parent",
+            error: error.message,
+        });
+    }
+};
+
+// Get all parents in a school
+const getAllParents = async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+        const { status, relationship } = req.query;
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Parent = getParentModel(schoolDbName);
+
+        // Build query filters
+        const query = {};
+        if (status) query.status = status;
+        if (relationship) query.relationship = relationship;
+
+        const parents = await Parent.find(query)
+            .select("-password")
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            message: "Parents fetched successfully",
+            data: parents,
+            count: parents.length,
+        });
+    } catch (error) {
+        console.error("Error fetching parents:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching parents",
+            error: error.message,
+        });
+    }
+};
+
+// Update parent by parentId
+const updateParentById = async (req, res) => {
+    try {
+        const { schoolId, id: parentId } = req.params;
+        const updateData = req.body;
+
+        // Prevent updating parentId, schoolId, and role
+        delete updateData.parentId;
+        delete updateData.schoolId;
+        delete updateData.role;
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Parent = getParentModel(schoolDbName);
+
+        // Get current parent for studentIds change handling
+        const currentParent = await Parent.findOne({ parentId });
+        if (!currentParent) {
+            return res.status(404).json({
+                success: false,
+                message: "Parent not found",
+            });
+        }
+
+        const oldStudentIds = currentParent.studentIds || [];
+        const newStudentIds = updateData.studentIds;
+
+        const updatedParent = await Parent.findOneAndUpdate(
+            { parentId },
+            updateData,
+            {
+                new: true,
+                runValidators: true,
+            }
+        ).select("-password");
+
+        // Handle bidirectional parent-student relationship update
+        if (newStudentIds !== undefined) {
+            const Student = getStudentModel(schoolDbName);
+
+            // Find removed students and clear their parentId
+            const removedStudents = oldStudentIds.filter(id => !newStudentIds.includes(id));
+            if (removedStudents.length > 0) {
+                await Student.updateMany(
+                    { studentId: { $in: removedStudents } },
+                    { $unset: { parentId: "" } }
+                );
+            }
+
+            // Find added students and set their parentId
+            const addedStudents = newStudentIds.filter(id => !oldStudentIds.includes(id));
+            if (addedStudents.length > 0) {
+                await Student.updateMany(
+                    { studentId: { $in: addedStudents } },
+                    { parentId: parentId }
+                );
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Parent updated successfully",
+            data: updatedParent,
+        });
+    } catch (error) {
+        console.error("Error updating parent:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error updating parent",
+            error: error.message,
+        });
+    }
+};
+
+// Get parents by studentId
+const getParentsByStudentId = async (req, res) => {
+    try {
+        const { schoolId, studentId } = req.params;
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Parent = getParentModel(schoolDbName);
+
+        // Find all parents that have this studentId in their studentIds array
+        const parents = await Parent.find({
+            studentIds: studentId,
+        }).select("-password");
+
+        return res.status(200).json({
+            success: true,
+            message: "Parents fetched successfully",
+            data: parents,
+            count: parents.length,
+        });
+    } catch (error) {
+        console.error("Error fetching parents by student:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching parents by student",
+            error: error.message,
+        });
+    }
+};
+
+module.exports = {
+    createParent,
+    getParentById,
+    getAllParents,
+    updateParentById,
+    getParentsByStudentId,
+};
