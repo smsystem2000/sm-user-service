@@ -3,9 +3,9 @@ const cors = require('cors');
 require('dotenv').config();
 
 const { connectDB } = require('./configs/db');
-const schoolRoutes = require('./routes/school.routes');
-const authRoutes = require('./routes/auth.routes');
-const userRoutes = require('./routes/user.routes');
+const teacherRoutes = require('./routes/teacher.routes');
+const studentRoutes = require('./routes/student.routes');
+const parentRoutes = require('./routes/parent.routes');
 
 const app = express();
 
@@ -14,10 +14,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.use('/api/admin/school', schoolRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/admin/user', userRoutes);
+// School-specific user routes (stored in school databases)
+app.use('/api/school/:schoolId/teachers', teacherRoutes);
+app.use('/api/school/:schoolId/students', studentRoutes);
+app.use('/api/school/:schoolId/parents', parentRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {

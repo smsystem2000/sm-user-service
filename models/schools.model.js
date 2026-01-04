@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 
+// School model for looking up schoolDbName
+// This is a read-only reference to the schools collection in SuperAdmin database
 const schoolSchema = new mongoose.Schema(
     {
         schoolId: {
