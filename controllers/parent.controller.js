@@ -1,5 +1,6 @@
 const { getSchoolDbConnection } = require("../configs/db");
 const School = require("../models/schools.model");
+const EmailRegistry = require("../models/EmailRegistry.model");
 const parentSchema = require("../models/parent.model");
 const studentSchema = require("../models/student.model");
 
@@ -72,6 +73,17 @@ const createParent = async (req, res) => {
             });
         }
 
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // Check if email already exists in EmailRegistry (global check)
+        const existingEmail = await EmailRegistry.findOne({ email: normalizedEmail });
+        if (existingEmail) {
+            return res.status(400).json({
+                success: false,
+                message: "Email already exists in the system",
+            });
+        }
+
         // Get school database name
         const schoolDbName = await getSchoolDbName(schoolId);
         if (!schoolDbName) {
@@ -83,15 +95,6 @@ const createParent = async (req, res) => {
 
         const Parent = getParentModel(schoolDbName);
 
-        // Check if email already exists in this school
-        const existingParent = await Parent.findOne({ email });
-        if (existingParent) {
-            return res.status(400).json({
-                success: false,
-                message: "A parent with this email already exists in this school",
-            });
-        }
-
         // Generate parentId
         const parentId = await generateParentId(Parent);
 
@@ -100,7 +103,7 @@ const createParent = async (req, res) => {
             schoolId,
             firstName,
             lastName,
-            email,
+            email: normalizedEmail,
             password, // Plain text for now
             phone,
             studentIds: studentIds || [],
@@ -111,6 +114,15 @@ const createParent = async (req, res) => {
         });
 
         const savedParent = await newParent.save();
+
+        // Register in EmailRegistry for unified login
+        await EmailRegistry.create({
+            email: normalizedEmail,
+            role: "parent",
+            schoolId: schoolId,
+            userId: savedParent.parentId,
+            status: savedParent.status || "active",
+        });
 
         // Update students' parentId (bidirectional)
         if (studentIds && studentIds.length > 0) {
@@ -259,6 +271,36 @@ const updateParentById = async (req, res) => {
             });
         }
 
+        // If email is being updated, update EmailRegistry too
+        if (updateData.email && updateData.email !== currentParent.email) {
+            const normalizedEmail = updateData.email.toLowerCase().trim();
+
+            // Check if new email exists
+            const existingEmail = await EmailRegistry.findOne({ email: normalizedEmail });
+            if (existingEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email already exists in the system",
+                });
+            }
+
+            // Update EmailRegistry
+            await EmailRegistry.findOneAndUpdate(
+                { email: currentParent.email.toLowerCase() },
+                { email: normalizedEmail }
+            );
+
+            updateData.email = normalizedEmail;
+        }
+
+        // If status is being updated, update EmailRegistry too
+        if (updateData.status) {
+            await EmailRegistry.findOneAndUpdate(
+                { email: currentParent.email.toLowerCase() },
+                { status: updateData.status }
+            );
+        }
+
         const oldStudentIds = currentParent.studentIds || [];
         const newStudentIds = updateData.studentIds;
 
@@ -309,6 +351,57 @@ const updateParentById = async (req, res) => {
     }
 };
 
+// Delete parent by parentId (soft delete)
+const deleteParentById = async (req, res) => {
+    try {
+        const { schoolId, id: parentId } = req.params;
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Parent = getParentModel(schoolDbName);
+
+        const parent = await Parent.findOne({ parentId });
+        if (!parent) {
+            return res.status(404).json({
+                success: false,
+                message: "Parent not found",
+            });
+        }
+
+        // Soft delete
+        const deletedParent = await Parent.findOneAndUpdate(
+            { parentId },
+            { status: "inactive" },
+            { new: true }
+        ).select("-password");
+
+        // Update EmailRegistry status
+        await EmailRegistry.findOneAndUpdate(
+            { email: parent.email.toLowerCase() },
+            { status: "inactive" }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Parent deleted successfully (soft delete)",
+            data: deletedParent,
+        });
+    } catch (error) {
+        console.error("Error deleting parent:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error deleting parent",
+            error: error.message,
+        });
+    }
+};
+
 // Get parents by studentId
 const getParentsByStudentId = async (req, res) => {
     try {
@@ -350,5 +443,6 @@ module.exports = {
     getParentById,
     getAllParents,
     updateParentById,
+    deleteParentById,
     getParentsByStudentId,
 };

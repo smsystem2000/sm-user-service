@@ -1,5 +1,6 @@
 const { getSchoolDbConnection } = require("../configs/db");
 const School = require("../models/schools.model");
+const EmailRegistry = require("../models/EmailRegistry.model");
 const studentSchema = require("../models/student.model");
 const parentSchema = require("../models/parent.model");
 
@@ -76,6 +77,18 @@ const createStudent = async (req, res) => {
             });
         }
 
+        // Check if email already exists in EmailRegistry (global check)
+        if (email) {
+            const normalizedEmail = email.toLowerCase().trim();
+            const existingEmail = await EmailRegistry.findOne({ email: normalizedEmail });
+            if (existingEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email already exists in the system",
+                });
+            }
+        }
+
         // Get school database name
         const schoolDbName = await getSchoolDbName(schoolId);
         if (!schoolDbName) {
@@ -87,26 +100,17 @@ const createStudent = async (req, res) => {
 
         const Student = getStudentModel(schoolDbName);
 
-        // Check if email already exists (if provided)
-        if (email) {
-            const existingStudent = await Student.findOne({ email });
-            if (existingStudent) {
-                return res.status(400).json({
-                    success: false,
-                    message: "A student with this email already exists in this school",
-                });
-            }
-        }
-
         // Generate studentId
         const studentId = await generateStudentId(Student);
+
+        const normalizedEmail = email ? email.toLowerCase().trim() : undefined;
 
         const newStudent = new Student({
             studentId,
             schoolId,
             firstName,
             lastName,
-            email,
+            email: normalizedEmail,
             password, // Plain text for now
             phone,
             class: studentClass,
@@ -121,6 +125,17 @@ const createStudent = async (req, res) => {
         });
 
         const savedStudent = await newStudent.save();
+
+        // Register in EmailRegistry for unified login (only if email provided)
+        if (normalizedEmail) {
+            await EmailRegistry.create({
+                email: normalizedEmail,
+                role: "student",
+                schoolId: schoolId,
+                userId: savedStudent.studentId,
+                status: savedStudent.status || "active",
+            });
+        }
 
         // If parentId is provided, update parent's studentIds array (bidirectional)
         if (parentId) {
@@ -272,6 +287,47 @@ const updateStudentById = async (req, res) => {
             });
         }
 
+        // If email is being updated, update EmailRegistry too
+        if (updateData.email && updateData.email !== currentStudent.email) {
+            const normalizedEmail = updateData.email.toLowerCase().trim();
+
+            // Check if new email exists
+            const existingEmail = await EmailRegistry.findOne({ email: normalizedEmail });
+            if (existingEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email already exists in the system",
+                });
+            }
+
+            // Update EmailRegistry
+            if (currentStudent.email) {
+                await EmailRegistry.findOneAndUpdate(
+                    { email: currentStudent.email.toLowerCase() },
+                    { email: normalizedEmail }
+                );
+            } else {
+                // Create new entry if student didn't have email before
+                await EmailRegistry.create({
+                    email: normalizedEmail,
+                    role: "student",
+                    schoolId: schoolId,
+                    userId: studentId,
+                    status: currentStudent.status || "active",
+                });
+            }
+
+            updateData.email = normalizedEmail;
+        }
+
+        // If status is being updated, update EmailRegistry too
+        if (updateData.status && currentStudent.email) {
+            await EmailRegistry.findOneAndUpdate(
+                { email: currentStudent.email.toLowerCase() },
+                { status: updateData.status }
+            );
+        }
+
         const oldParentId = currentStudent.parentId;
         const newParentId = updateData.parentId;
 
@@ -335,17 +391,26 @@ const deleteStudentById = async (req, res) => {
 
         const Student = getStudentModel(schoolDbName);
 
+        const student = await Student.findOne({ studentId });
+        if (!student) {
+            return res.status(404).json({
+                success: false,
+                message: "Student not found",
+            });
+        }
+
         const deletedStudent = await Student.findOneAndUpdate(
             { studentId },
             { status: "inactive" },
             { new: true }
         ).select("-password");
 
-        if (!deletedStudent) {
-            return res.status(404).json({
-                success: false,
-                message: "Student not found",
-            });
+        // Update EmailRegistry status if student has email
+        if (student.email) {
+            await EmailRegistry.findOneAndUpdate(
+                { email: student.email.toLowerCase() },
+                { status: "inactive" }
+            );
         }
 
         return res.status(200).json({

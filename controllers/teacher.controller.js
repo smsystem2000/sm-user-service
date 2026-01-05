@@ -1,5 +1,6 @@
 const { getSchoolDbConnection } = require("../configs/db");
 const School = require("../models/schools.model");
+const EmailRegistry = require("../models/EmailRegistry.model");
 const teacherSchema = require("../models/teacher.model");
 
 /**
@@ -63,6 +64,17 @@ const createTeacher = async (req, res) => {
             });
         }
 
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // Check if email already exists in EmailRegistry (global check)
+        const existingEmail = await EmailRegistry.findOne({ email: normalizedEmail });
+        if (existingEmail) {
+            return res.status(400).json({
+                success: false,
+                message: "Email already exists in the system",
+            });
+        }
+
         // Get school database name
         const schoolDbName = await getSchoolDbName(schoolId);
         if (!schoolDbName) {
@@ -74,15 +86,6 @@ const createTeacher = async (req, res) => {
 
         const Teacher = getTeacherModel(schoolDbName);
 
-        // Check if email already exists in this school
-        const existingTeacher = await Teacher.findOne({ email });
-        if (existingTeacher) {
-            return res.status(400).json({
-                success: false,
-                message: "A teacher with this email already exists in this school",
-            });
-        }
-
         // Generate teacherId
         const teacherId = await generateTeacherId(Teacher);
 
@@ -91,7 +94,7 @@ const createTeacher = async (req, res) => {
             schoolId,
             firstName,
             lastName,
-            email,
+            email: normalizedEmail,
             password, // Plain text for now - add bcrypt later
             phone,
             department,
@@ -102,6 +105,15 @@ const createTeacher = async (req, res) => {
         });
 
         const savedTeacher = await newTeacher.save();
+
+        // Register in EmailRegistry for unified login
+        await EmailRegistry.create({
+            email: normalizedEmail,
+            role: "teacher",
+            schoolId: schoolId,
+            userId: savedTeacher.teacherId,
+            status: savedTeacher.status || "active",
+        });
 
         return res.status(201).json({
             success: true,
@@ -229,6 +241,45 @@ const updateTeacherById = async (req, res) => {
 
         const Teacher = getTeacherModel(schoolDbName);
 
+        // Get current teacher for email comparison
+        const currentTeacher = await Teacher.findOne({ teacherId });
+        if (!currentTeacher) {
+            return res.status(404).json({
+                success: false,
+                message: "Teacher not found",
+            });
+        }
+
+        // If email is being updated, update EmailRegistry too
+        if (updateData.email && updateData.email !== currentTeacher.email) {
+            const normalizedEmail = updateData.email.toLowerCase().trim();
+
+            // Check if new email exists
+            const existingEmail = await EmailRegistry.findOne({ email: normalizedEmail });
+            if (existingEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email already exists in the system",
+                });
+            }
+
+            // Update EmailRegistry
+            await EmailRegistry.findOneAndUpdate(
+                { email: currentTeacher.email.toLowerCase() },
+                { email: normalizedEmail }
+            );
+
+            updateData.email = normalizedEmail;
+        }
+
+        // If status is being updated, update EmailRegistry too
+        if (updateData.status) {
+            await EmailRegistry.findOneAndUpdate(
+                { email: currentTeacher.email.toLowerCase() },
+                { status: updateData.status }
+            );
+        }
+
         const updatedTeacher = await Teacher.findOneAndUpdate(
             { teacherId },
             updateData,
@@ -237,13 +288,6 @@ const updateTeacherById = async (req, res) => {
                 runValidators: true,
             }
         ).select("-password");
-
-        if (!updatedTeacher) {
-            return res.status(404).json({
-                success: false,
-                message: "Teacher not found",
-            });
-        }
 
         return res.status(200).json({
             success: true,
@@ -275,18 +319,26 @@ const deleteTeacherById = async (req, res) => {
 
         const Teacher = getTeacherModel(schoolDbName);
 
+        const teacher = await Teacher.findOne({ teacherId });
+        if (!teacher) {
+            return res.status(404).json({
+                success: false,
+                message: "Teacher not found",
+            });
+        }
+
+        // Soft delete
         const deletedTeacher = await Teacher.findOneAndUpdate(
             { teacherId },
             { status: "inactive" },
             { new: true }
         ).select("-password");
 
-        if (!deletedTeacher) {
-            return res.status(404).json({
-                success: false,
-                message: "Teacher not found",
-            });
-        }
+        // Update EmailRegistry status
+        await EmailRegistry.findOneAndUpdate(
+            { email: teacher.email.toLowerCase() },
+            { status: "inactive" }
+        );
 
         return res.status(200).json({
             success: true,
