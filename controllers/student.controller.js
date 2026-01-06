@@ -428,10 +428,66 @@ const deleteStudentById = async (req, res) => {
     }
 };
 
+// Search students for autocomplete (partial matching)
+const searchStudents = async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+        const { query } = req.query;
+
+        if (!query || query.length < 2) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                message: "Query too short",
+            });
+        }
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Student = getStudentModel(schoolDbName);
+
+        // Search by studentId, email, firstName, lastName with partial matching
+        const searchRegex = new RegExp(query, "i");
+
+        const students = await Student.find({
+            $or: [
+                { studentId: searchRegex },
+                { email: searchRegex },
+                { firstName: searchRegex },
+                { lastName: searchRegex },
+            ],
+            status: "active",
+        })
+            .select("studentId firstName lastName email class section")
+            .limit(10);
+
+        return res.status(200).json({
+            success: true,
+            data: students,
+            count: students.length,
+        });
+    } catch (error) {
+        console.error("Error searching students:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error searching students",
+            error: error.message,
+        });
+    }
+};
+
 module.exports = {
     createStudent,
     getStudentById,
     getAllStudents,
     updateStudentById,
     deleteStudentById,
+    searchStudents,
 };
+

@@ -6,6 +6,7 @@ const { connectDB } = require('./configs/db');
 const teacherRoutes = require('./routes/teacher.routes');
 const studentRoutes = require('./routes/student.routes');
 const parentRoutes = require('./routes/parent.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 
 const app = express();
 
@@ -32,9 +33,6 @@ const corsOptions = {
 // Middleware
 app.use(cors(corsOptions));
 
-// Handle preflight OPTIONS requests
-app.options('{*path}', cors(corsOptions));
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -42,6 +40,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/school/:schoolId/teachers', teacherRoutes);
 app.use('/api/school/:schoolId/students', studentRoutes);
 app.use('/api/school/:schoolId/parents', parentRoutes);
+app.use('/api/school/:schoolId/dashboard', dashboardRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {

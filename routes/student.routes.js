@@ -7,11 +7,20 @@ const {
     getAllStudents,
     updateStudentById,
     deleteStudentById,
+    searchStudents,
 } = require("../controllers/student.controller");
 const Authenticated = require("../middlewares/auth");
 const authorizeRoles = require("../middlewares/authorizeRole");
 
 // All routes require authentication and appropriate role
+// GET /api/school/:schoolId/students/search?query=xxx - Search students
+router.get(
+    "/search",
+    Authenticated,
+    authorizeRoles("super_admin", "sch_admin"),
+    searchStudents
+);
+
 // POST /api/school/:schoolId/students - Create a new student
 router.post(
     "/",
