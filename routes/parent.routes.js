@@ -7,11 +7,20 @@ const {
     getAllParents,
     updateParentById,
     getParentsByStudentId,
+    searchParents,
 } = require("../controllers/parent.controller");
 const Authenticated = require("../middlewares/auth");
 const authorizeRoles = require("../middlewares/authorizeRole");
 
 // All routes require authentication and appropriate role
+// GET /api/school/:schoolId/parents/search?query=xxx - Search parents
+router.get(
+    "/search",
+    Authenticated,
+    authorizeRoles("super_admin", "sch_admin"),
+    searchParents
+);
+
 // POST /api/school/:schoolId/parents - Create a new parent
 router.post(
     "/",

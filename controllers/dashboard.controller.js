@@ -1,0 +1,73 @@
+const { getSchoolDbConnection } = require("../configs/db");
+const School = require("../models/schools.model");
+const teacherSchema = require("../models/teacher.model");
+const studentSchema = require("../models/student.model");
+const parentSchema = require("../models/parent.model");
+
+// Get school database name by schoolId
+const getSchoolDbName = async (schoolId) => {
+    const school = await School.findOne({ schoolId });
+    if (!school) {
+        throw new Error("School not found");
+    }
+    return school.schoolDbName;
+};
+
+// Get model for a specific school database
+const getModel = async (schoolDbName, modelName, schema) => {
+    const schoolDb = await getSchoolDbConnection(schoolDbName);
+    return schoolDb.model(modelName, schema);
+};
+
+// Get dashboard stats for a school
+const getSchoolDashboardStats = async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+
+        if (!schoolId) {
+            return res.status(400).json({
+                success: false,
+                message: "School ID is required",
+            });
+        }
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+
+        const Teacher = await getModel(schoolDbName, "Teacher", teacherSchema);
+        const Student = await getModel(schoolDbName, "Student", studentSchema);
+        const Parent = await getModel(schoolDbName, "Parent", parentSchema);
+
+        // Get counts
+        const totalTeachers = await Teacher.countDocuments();
+        const activeTeachers = await Teacher.countDocuments({ status: "active" });
+
+        const totalStudents = await Student.countDocuments();
+        const activeStudents = await Student.countDocuments({ status: "active" });
+
+        const totalParents = await Parent.countDocuments();
+        const activeParents = await Parent.countDocuments({ status: "active" });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalTeachers,
+                activeTeachers,
+                totalStudents,
+                activeStudents,
+                totalParents,
+                activeParents,
+            },
+        });
+    } catch (error) {
+        console.error("Error getting school dashboard stats:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to get dashboard stats",
+            error: error.message,
+        });
+    }
+};
+
+module.exports = {
+    getSchoolDashboardStats,
+};
