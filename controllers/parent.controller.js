@@ -205,6 +205,8 @@ const getAllParents = async (req, res) => {
     try {
         const { schoolId } = req.params;
         const { status, relationship } = req.query;
+        const userRole = req.user?.role;
+        const userClasses = req.user?.classes; // Teacher's assigned classes from token
 
         const schoolDbName = await getSchoolDbName(schoolId);
         if (!schoolDbName) {
@@ -215,13 +217,29 @@ const getAllParents = async (req, res) => {
         }
 
         const Parent = getParentModel(schoolDbName);
+        const Student = getStudentModel(schoolDbName);
 
         // Build query filters
         const query = {};
         if (status) query.status = status;
         if (relationship) query.relationship = relationship;
 
-        const parents = await Parent.find(query)
+        let parents;
+
+        // If teacher role, only get parents of students in their classes
+        if (userRole === "teacher" && userClasses && userClasses.length > 0) {
+            // First, find all students in teacher's classes
+            const studentsInClasses = await Student.find({
+                class: { $in: userClasses },
+            }).select("studentId");
+
+            const studentIds = studentsInClasses.map(s => s.studentId);
+
+            // Then, find parents who have these students
+            query.studentIds = { $in: studentIds };
+        }
+
+        parents = await Parent.find(query)
             .select("-password")
             .sort({ createdAt: -1 });
 

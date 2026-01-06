@@ -218,7 +218,9 @@ const getStudentById = async (req, res) => {
 const getAllStudents = async (req, res) => {
     try {
         const { schoolId } = req.params;
-        const { class: studentClass, section, status, parentId } = req.query;
+        const { class: studentClass, section, status, parentId, classes } = req.query;
+        const userRole = req.user?.role;
+        const userClasses = req.user?.classes; // Teacher's assigned classes from token
 
         const schoolDbName = await getSchoolDbName(schoolId);
         if (!schoolDbName) {
@@ -232,7 +234,18 @@ const getAllStudents = async (req, res) => {
 
         // Build query filters
         const query = {};
-        if (studentClass) query.class = studentClass;
+
+        // If teacher role, filter by their assigned classes only
+        if (userRole === "teacher" && userClasses && userClasses.length > 0) {
+            query.class = { $in: userClasses };
+        } else if (classes) {
+            // If classes filter passed as query param (comma separated)
+            const classArray = classes.split(',').map(c => c.trim());
+            query.class = { $in: classArray };
+        } else if (studentClass) {
+            query.class = studentClass;
+        }
+
         if (section) query.section = section;
         if (status) query.status = status;
         if (parentId) query.parentId = parentId;
