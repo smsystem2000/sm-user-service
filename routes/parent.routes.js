@@ -17,7 +17,7 @@ const authorizeRoles = require("../middlewares/authorizeRole");
 router.get(
     "/search",
     Authenticated,
-    authorizeRoles("super_admin", "sch_admin"),
+    authorizeRoles("super_admin", "sch_admin", "teacher"),
     searchParents
 );
 
@@ -25,7 +25,7 @@ router.get(
 router.post(
     "/",
     Authenticated,
-    authorizeRoles("super_admin", "sch_admin"),
+    authorizeRoles("super_admin", "sch_admin", "teacher"),
     createParent
 );
 
@@ -33,7 +33,7 @@ router.post(
 router.get(
     "/",
     Authenticated,
-    authorizeRoles("super_admin", "sch_admin"),
+    authorizeRoles("super_admin", "sch_admin", "teacher"),
     getAllParents
 );
 
