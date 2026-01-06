@@ -3,6 +3,7 @@ const School = require("../models/schools.model");
 const teacherSchema = require("../models/teacher.model");
 const studentSchema = require("../models/student.model");
 const parentSchema = require("../models/parent.model");
+const menuModel = require("../models/menu.model");
 
 // Get school database name by schoolId
 const getSchoolDbName = async (schoolId) => {
@@ -68,6 +69,44 @@ const getSchoolDashboardStats = async (req, res) => {
     }
 };
 
-module.exports = {
-    getSchoolDashboardStats,
+
+
+const getMenus = async (req, res) => {
+    try {
+        const { role } = req.params;
+
+        if (!role) {
+            return res.status(400).json({
+                success: false,
+                message: "Role is required to fetch menus",
+            });
+        }
+
+        const menus = await menuModel
+            .find(
+                { menuAccessRoles: role },      // filter
+                { menuAccessRoles: 0 }          // exclude from response
+            )
+            .sort({ menuOrder: 1 });
+
+        return res.status(200).json({
+            success: true,
+            message: "Menus fetched successfully",
+            data: menus,
+            count: menus.length,
+        });
+    } catch (error) {
+        console.error("Error fetching menus:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch menus",
+            error: error.message,
+        });
+    }
 };
+
+
+module.exports = {     
+    getMenus,
+    getSchoolDashboardStats,
+}

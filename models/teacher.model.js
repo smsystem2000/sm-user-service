@@ -64,4 +64,4 @@ const teacherSchema = new mongoose.Schema(
 teacherSchema.index({ email: 1, schoolId: 1 }, { unique: true });
 
 // Export schema definition for use with school-specific databases
-module.exports = teacherSchema;
+module.exports = mongoose.model("Teacher", teacherSchema);
