@@ -438,6 +438,61 @@ const getParentsByStudentId = async (req, res) => {
     }
 };
 
+// Search parents for autocomplete (partial matching)
+const searchParents = async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+        const { query } = req.query;
+
+        if (!query || query.length < 2) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                message: "Query too short",
+            });
+        }
+
+        const schoolDbName = await getSchoolDbName(schoolId);
+        if (!schoolDbName) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        const Parent = getParentModel(schoolDbName);
+
+        // Search by parentId, email, firstName, lastName, phone with partial matching
+        const searchRegex = new RegExp(query, "i");
+
+        const parents = await Parent.find({
+            $or: [
+                { parentId: searchRegex },
+                { email: searchRegex },
+                { firstName: searchRegex },
+                { lastName: searchRegex },
+                { phone: searchRegex },
+            ],
+            status: "active",
+        })
+            .select("parentId firstName lastName email phone relationship")
+            .limit(10);
+
+        return res.status(200).json({
+            success: true,
+            data: parents,
+            count: parents.length,
+        });
+    } catch (error) {
+        console.error("Error searching parents:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error searching parents",
+            error: error.message,
+        });
+    }
+};
+
 module.exports = {
     createParent,
     getParentById,
@@ -445,4 +500,6 @@ module.exports = {
     updateParentById,
     deleteParentById,
     getParentsByStudentId,
+    searchParents,
 };
+
