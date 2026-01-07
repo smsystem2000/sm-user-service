@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { getSchoolDbConnection } = require("../configs/db");
+const { getSchoolDbName } = require("../utils/schoolDbHelper");
 const attendanceSimpleSchema = require("../models/attendance-simple.model");
 const attendancePeriodSchema = require("../models/attendance-period.model");
 const attendanceCheckinSchema = require("../models/attendance-checkin.model");
@@ -12,6 +13,12 @@ const getDateOnly = (date = new Date()) => {
     return d;
 };
 
+// Helper to get school database connection
+const getSchoolDb = async (schoolId) => {
+    const schoolDbName = await getSchoolDbName(schoolId);
+    return getSchoolDbConnection(schoolDbName);
+};
+
 /**
  * Get daily attendance report
  * GET /api/school/:schoolId/attendance/reports/daily
@@ -21,7 +28,7 @@ const getDailyReport = async (req, res) => {
         const { schoolId } = req.params;
         const { date, mode, classId, sectionId } = req.query;
 
-        const schoolDb = await getSchoolDbConnection(schoolId);
+        const schoolDb = await getSchoolDb(schoolId);
         const attendanceDate = getDateOnly(date || new Date());
 
         let studentData = { attendance: [], summary: {} };
@@ -137,7 +144,7 @@ const getMonthlyReport = async (req, res) => {
         const { year, month, mode, classId, sectionId, type } = req.query;
         // type = "student" | "teacher" | "both"
 
-        const schoolDb = await getSchoolDbConnection(schoolId);
+        const schoolDb = await getSchoolDb(schoolId);
 
         // Calculate date range for the month
         const y = parseInt(year) || new Date().getFullYear();
@@ -278,7 +285,7 @@ const getDateRangeReport = async (req, res) => {
             });
         }
 
-        const schoolDb = await getSchoolDbConnection(schoolId);
+        const schoolDb = await getSchoolDb(schoolId);
         const start = getDateOnly(startDate);
         const end = getDateOnly(endDate);
         end.setHours(23, 59, 59, 999);
@@ -370,7 +377,7 @@ const getClassWiseReport = async (req, res) => {
         const { schoolId } = req.params;
         const { date, mode } = req.query;
 
-        const schoolDb = await getSchoolDbConnection(schoolId);
+        const schoolDb = await getSchoolDb(schoolId);
         const attendanceDate = getDateOnly(date || new Date());
 
         let AttendanceModel;

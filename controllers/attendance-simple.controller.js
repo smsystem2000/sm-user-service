@@ -1,10 +1,12 @@
 const mongoose = require("mongoose");
 const { getSchoolDbConnection } = require("../configs/db");
+const { getSchoolDbName } = require("../utils/schoolDbHelper");
 const attendanceSimpleSchema = require("../models/attendance-simple.model");
 
 // Helper to get the model for a specific school
 const getAttendanceModel = async (schoolId) => {
-    const schoolDb = await getSchoolDbConnection(schoolId);
+    const schoolDbName = await getSchoolDbName(schoolId);
+    const schoolDb = getSchoolDbConnection(schoolDbName);
     return schoolDb.model("AttendanceSimple", attendanceSimpleSchema);
 };
 
