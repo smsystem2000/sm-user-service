@@ -36,6 +36,10 @@ const menuSchema = new mongoose.Schema(
             type: String,
             default: null,
         },
+        schoolId: {
+            type: String,
+            required: true,
+        },
     },
     {
         timestamps: true,
