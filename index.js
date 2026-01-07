@@ -8,6 +8,9 @@ const studentRoutes = require('./routes/student.routes');
 const parentRoutes = require('./routes/parent.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const requestRoutes = require('./routes/request.routes');
+const classRoutes = require('./routes/class.routes');
+const subjectRoutes = require('./routes/subject.routes');
+const attendanceRoutes = require('./routes/attendance.routes');
 
 const app = express();
 
@@ -43,6 +46,9 @@ app.use('/api/school/:schoolId/students', studentRoutes);
 app.use('/api/school/:schoolId/parents', parentRoutes);
 app.use('/api/school/:schoolId/dashboard', dashboardRoutes);
 app.use('/api/school/:schoolId/requests', requestRoutes);
+app.use('/api/school/:schoolId/classes', classRoutes);
+app.use('/api/school/:schoolId/subjects', subjectRoutes);
+app.use('/api/school/:schoolId/attendance', attendanceRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
