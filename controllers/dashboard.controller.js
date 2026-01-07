@@ -73,7 +73,13 @@ const getSchoolDashboardStats = async (req, res) => {
 
 const getMenus = async (req, res) => {
     try {
-        const { role } = req.params;
+        const { role,schoolId } = req.params;
+        if (!schoolId) {
+            return res.status(400).json({
+                success: false,
+                message: "School ID is required",
+            });
+        }
 
         if (!role) {
             return res.status(400).json({
@@ -84,8 +90,8 @@ const getMenus = async (req, res) => {
 
         const menus = await menuModel
             .find(
-                { menuAccessRoles: role },      // filter
-                { menuAccessRoles: 0 }          // exclude from response
+                { menuAccessRoles: role, schoolId:schoolId }, 
+                { menuAccessRoles: 0 }    
             )
             .sort({ menuOrder: 1 });
 
