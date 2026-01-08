@@ -78,13 +78,12 @@ const leaveRequestSchema = new mongoose.Schema(
 );
 
 // Calculate number of days before saving
-leaveRequestSchema.pre("save", function (next) {
+leaveRequestSchema.pre("save", function () {
     if (this.startDate && this.endDate) {
         const start = new Date(this.startDate);
         const end = new Date(this.endDate);
         this.numberOfDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
     }
-    next();
 });
 
 module.exports = leaveRequestSchema;

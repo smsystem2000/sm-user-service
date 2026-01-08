@@ -7,7 +7,13 @@ const leaveRequestSchema = require("../models/leave-request.model");
 const getLeaveModel = async (schoolId) => {
     const schoolDbName = await getSchoolDbName(schoolId);
     const schoolDb = getSchoolDbConnection(schoolDbName);
-    return schoolDb.model("LeaveRequest", leaveRequestSchema);
+
+    // Check if model already exists to avoid recompilation issues
+    try {
+        return schoolDb.model("LeaveRequest");
+    } catch (e) {
+        return schoolDb.model("LeaveRequest", leaveRequestSchema);
+    }
 };
 
 // Generate unique leave ID
@@ -323,6 +329,111 @@ const cancelLeave = async (req, res) => {
     }
 };
 
+/**
+ * Get leave statistics for dashboard (Admin)
+ * GET /api/school/:schoolId/leave/stats
+ */
+const getLeaveStats = async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+        const LeaveModel = await getLeaveModel(schoolId);
+
+        // Get today's date range
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        // Today's pending requests
+        const todayPending = await LeaveModel.countDocuments({
+            status: "pending",
+            createdAt: { $gte: today, $lt: tomorrow },
+        });
+
+        // Total pending requests
+        const totalPending = await LeaveModel.countDocuments({
+            status: "pending",
+        });
+
+        // Today's all requests
+        const todayTotal = await LeaveModel.countDocuments({
+            createdAt: { $gte: today, $lt: tomorrow },
+        });
+
+        // Requests by type
+        const teacherPending = await LeaveModel.countDocuments({
+            status: "pending",
+            applicantType: "teacher",
+        });
+
+        const studentPending = await LeaveModel.countDocuments({
+            status: "pending",
+            applicantType: "student",
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                todayPending,
+                todayTotal,
+                totalPending,
+                teacherPending,
+                studentPending,
+            },
+        });
+    } catch (error) {
+        console.error("Error getting leave stats:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to get leave statistics",
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * Get student leave requests for class teacher
+ * GET /api/school/:schoolId/leave/class-leaves
+ */
+const getStudentLeavesForTeacher = async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+        const { status, classId } = req.query;
+        const teacherId = req.user?.teacherId || req.user?.userId;
+
+        const LeaveModel = await getLeaveModel(schoolId);
+
+        // Build query - only student leaves
+        const query = { applicantType: "student" };
+        if (status) query.status = status;
+        if (classId) query.classId = classId;
+
+        const leaves = await LeaveModel.find(query)
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Summary
+        const summary = {
+            total: leaves.length,
+            pending: leaves.filter((l) => l.status === "pending").length,
+            approved: leaves.filter((l) => l.status === "approved").length,
+            rejected: leaves.filter((l) => l.status === "rejected").length,
+        };
+
+        res.status(200).json({
+            success: true,
+            data: { leaves, summary },
+        });
+    } catch (error) {
+        console.error("Error getting student leaves for teacher:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to get student leave requests",
+            error: error.message,
+        });
+    }
+};
+
 module.exports = {
     applyLeave,
     getMyLeaves,
@@ -330,4 +441,6 @@ module.exports = {
     processLeave,
     getLeaveById,
     cancelLeave,
+    getLeaveStats,
+    getStudentLeavesForTeacher,
 };
