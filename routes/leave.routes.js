@@ -15,16 +15,16 @@ router.use(checkAuth);
 
 // Student/Teacher routes
 // Apply for leave
-router.post("/apply", applyLeave);
+router.post("/apply", checkRole(["student", "teacher"]), applyLeave);
 
 // Get my leave requests
-router.get("/my", getMyLeaves);
+router.get("/my", checkRole(["student", "teacher"]), getMyLeaves);
 
 // Get specific leave by ID
-router.get("/:leaveId", getLeaveById);
+router.get("/:leaveId", checkRole(["student", "teacher"]), getLeaveById);
 
 // Cancel pending leave (own request only)
-router.delete("/:leaveId", cancelLeave);
+router.delete("/:leaveId", checkRole(["student", "teacher"]), cancelLeave);
 
 // Admin routes
 // Get all leave requests
