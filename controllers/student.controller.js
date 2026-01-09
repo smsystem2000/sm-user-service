@@ -3,6 +3,7 @@ const School = require("../models/schools.model");
 const EmailRegistry = require("../models/EmailRegistry.model");
 const studentSchema = require("../models/student.model");
 const parentSchema = require("../models/parent.model");
+const classSchema = require("../models/class.model");
 
 /**
  * Get Student model for a specific school database
@@ -18,6 +19,14 @@ const getStudentModel = (schoolDbName) => {
 const getParentModel = (schoolDbName) => {
     const schoolDb = getSchoolDbConnection(schoolDbName);
     return schoolDb.model("Parent", parentSchema);
+};
+
+/**
+ * Get Class model for a specific school database
+ */
+const getClassModel = (schoolDbName) => {
+    const schoolDb = getSchoolDbConnection(schoolDbName);
+    return schoolDb.model("Class", classSchema);
 };
 
 /**
@@ -231,6 +240,7 @@ const getAllStudents = async (req, res) => {
         }
 
         const Student = getStudentModel(schoolDbName);
+        const Parent = getParentModel(schoolDbName);
 
         // Build query filters
         const query = {};
@@ -254,11 +264,62 @@ const getAllStudents = async (req, res) => {
             .select("-password")
             .sort({ createdAt: -1 });
 
+        // Get unique parent IDs to fetch parent details
+        const parentIds = [...new Set(students.filter(s => s.parentId).map(s => s.parentId))];
+
+        // Fetch parent details
+        const parents = await Parent.find({ parentId: { $in: parentIds } })
+            .select("parentId firstName lastName");
+
+        // Create a map for quick lookup
+        const parentMap = {};
+        parents.forEach(p => {
+            parentMap[p.parentId] = `${p.firstName} ${p.lastName}`;
+        });
+
+        // Get unique class IDs to fetch class details
+        const classIds = [...new Set(students.filter(s => s.class).map(s => s.class))];
+
+        // Fetch class details with sections
+        const Class = getClassModel(schoolDbName);
+        const classData = await Class.find({ classId: { $in: classIds } })
+            .select("classId name sections");
+
+        // Create maps for class names and sections
+        const classMap = {};
+        const sectionMap = {};
+        classData.forEach(c => {
+            classMap[c.classId] = c.name;
+            if (c.sections) {
+                c.sections.forEach(s => {
+                    sectionMap[s.sectionId] = s.name;
+                });
+            }
+        });
+
+        // Add parentName, className, and sectionName to each student
+        const studentsWithDetails = students.map(student => {
+            const studentObj = student.toObject();
+            // Add parent name
+            if (studentObj.parentId && parentMap[studentObj.parentId]) {
+                studentObj.parentName = parentMap[studentObj.parentId];
+            }
+            // Add class name
+            if (studentObj.class && classMap[studentObj.class]) {
+                studentObj.className = classMap[studentObj.class];
+            }
+            // Add section name
+            if (studentObj.section && sectionMap[studentObj.section]) {
+                studentObj.sectionName = sectionMap[studentObj.section];
+            }
+            return studentObj;
+        });
+
         return res.status(200).json({
             success: true,
             message: "Students fetched successfully",
-            data: students,
-            count: students.length,
+            data: studentsWithDetails,
+            count: studentsWithDetails.length,
         });
     } catch (error) {
         console.error("Error fetching students:", error);

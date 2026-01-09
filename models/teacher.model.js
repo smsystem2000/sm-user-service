@@ -35,14 +35,15 @@ const teacherSchema = new mongoose.Schema(
             default: "teacher",
             immutable: true,
         },
-        department: {
-            type: String,
-        },
         subjects: {
             type: [String],
             default: [],
         },
         classes: {
+            type: [String],
+            default: [],
+        },
+        sections: {
             type: [String],
             default: [],
         },
@@ -65,4 +66,3 @@ teacherSchema.index({ email: 1, schoolId: 1 }, { unique: true });
 
 // Export schema definition for use with school-specific databases
 module.exports = teacherSchema;
-
