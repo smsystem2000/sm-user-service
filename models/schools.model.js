@@ -38,6 +38,18 @@ const schoolSchema = new mongoose.Schema(
         schoolWebsite: {
             type: String,
         },
+        location: {
+            latitude: {
+                type: Number,
+            },
+            longitude: {
+                type: Number,
+            },
+            radiusMeters: {
+                type: Number,
+                default: 100,
+            },
+        },
     },
     {
         timestamps: true,

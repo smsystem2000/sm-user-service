@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const { getSchoolDbConnection } = require("../configs/db");
 const { getSchoolDbName } = require("../utils/schoolDbHelper");
 const teacherAttendanceSchema = require("../models/teacher-attendance.model");
+const School = require("../models/schools.model");
 
 // Helper to get the model for a specific school
 const getAttendanceModel = async (schoolId) => {
@@ -25,19 +26,77 @@ const getDateOnly = (date = new Date()) => {
 };
 
 /**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in meters
+ */
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000; // Earth's radius in meters
+    const toRad = (deg) => deg * (Math.PI / 180);
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in meters
+};
+
+/**
  * Teacher self check-in
  * POST /api/school/:schoolId/attendance/teacher/check-in
+ * Body: { latitude, longitude } - teacher's current location
  */
 const teacherCheckIn = async (req, res) => {
     try {
         const { schoolId } = req.params;
         const teacherId = req.user?.teacherId || req.body.teacherId;
+        const { latitude, longitude } = req.body;
 
         if (!teacherId) {
             return res.status(400).json({
                 success: false,
                 message: "teacherId is required",
             });
+        }
+
+        // Get school details for location validation
+        const school = await School.findOne({ schoolId });
+        if (!school) {
+            return res.status(404).json({
+                success: false,
+                message: "School not found",
+            });
+        }
+
+        // Validate location if school has coordinates configured
+        if (school.location?.latitude && school.location?.longitude) {
+            if (!latitude || !longitude) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Location is required for check-in. Please enable GPS.",
+                });
+            }
+
+            const distance = calculateDistance(
+                latitude,
+                longitude,
+                school.location.latitude,
+                school.location.longitude
+            );
+
+            const allowedRadius = school.location.radiusMeters || 100;
+
+            if (distance > allowedRadius) {
+                return res.status(403).json({
+                    success: false,
+                    message: `You must be within ${allowedRadius}m of school to check in. Current distance: ${Math.round(distance)}m`,
+                    data: { distance: Math.round(distance), allowedRadius },
+                });
+            }
         }
 
         const AttendanceModel = await getAttendanceModel(schoolId);
@@ -64,6 +123,7 @@ const teacherCheckIn = async (req, res) => {
             attendance.status = "present";
             attendance.markedBy = teacherId;
             attendance.markedByRole = "teacher";
+            attendance.checkInLocation = { latitude, longitude };
         } else {
             // Create new
             attendance = new AttendanceModel({
@@ -75,6 +135,7 @@ const teacherCheckIn = async (req, res) => {
                 status: "present",
                 markedBy: teacherId,
                 markedByRole: "teacher",
+                checkInLocation: { latitude, longitude },
             });
         }
 
